@@ -11,20 +11,16 @@ from PIL import ImageDraw
 
 FONT = '/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-B.ttf'
 PICKLE_FILE = 'data.pickle'
+QUOTES_FILE = 'quotes.txt'
+SOURCE_INDICATOR = '~'
 
 
-quotes = [
-    'If you want to achieve greatness, stop asking for permission. ~Anonymous',
-    'If you are not willing to risk the usual you will have to settle for the ordinary. ~Jim Rohn',
-    'To live a creative life, we must lose our fear of being wrong. ~Anonymous',
-    'All our dreams can come true if we have the courage to pursue them. ~Walt Disney',
-    'Success is walking from failure to failure with no loss of enthusiasm. ~Winston Churchill',
-    'If you do what you always did, you will get what you always got. ~Anonymous',
-    'Opportunities don''t happen, you create them. ~Chris Grosser',
-    'The ones who are crazy enough to think they can change the world, are the ones that do. ~Anonymous',
-    'Stop dreaming, start doing.'
-]
-
+if os.path.isfile(QUOTES_FILE):
+    with open(QUOTES_FILE, 'r') as f:
+        quotes = f.readlines()
+else:
+    print('Quotes file missing')
+    exit(0)
 
 
 
@@ -120,16 +116,18 @@ width, height = image.size
 
 quote = random.choice(quotes)
 
-if '~' in quote:
-    quote, by = quote.split('~')
+if SOURCE_INDICATOR in quote:
+    quote, by = quote.split(SOURCE_INDICATOR)
 else:
     by = 'Anonymous'
 
-by = '~'+by
+by = SOURCE_INDICATOR+by
 
 quote = quote.split()
 
-quote_parts = [' '.join(quote[i:i+3]) for i in range(0, len(quote), 3)]
+words_per_line = 3 if len(quote) < 15 else 5
+
+quote_parts = [' '.join(quote[i:i+words_per_line]) for i in range(0, len(quote), words_per_line)]
 quote_parts.append(by)
 
 quote_lines = '\n'.join(quote_parts)
