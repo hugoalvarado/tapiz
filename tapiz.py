@@ -9,18 +9,17 @@ from PIL import ImageFont
 from PIL import ImageDraw
 
 
-FONT = '/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-B.ttf'
+FONT = 'fonts/Ubuntu-B.ttf'
 PICKLE_FILE = 'data.pickle'
 QUOTES_FILE = 'quotes.txt'
 SOURCE_INDICATOR = '~'
 
 
-if os.path.isfile(QUOTES_FILE):
-    with open(QUOTES_FILE, 'r') as f:
+def load_quotes_from_file(file):
+    with open(file, 'r') as f:
         quotes = f.readlines()
-else:
-    print('Quotes file missing')
-    exit(0)
+
+    return quotes
 
 
 
@@ -64,94 +63,126 @@ def get_desktop_environment():
     return "unknown"
 
 
-font = ImageFont.truetype(FONT,60)
+
+def supported_de(desktop_session):
+    if 'mate' == desktop_session:
+        return True
+    else:
+        return False
 
 
+def get_data(file):
+    if os.path.isfile(file):
+        with open(file, 'rb') as f:
+            # The protocol version used is detected automatically, so we do not
+            # have to specify it.
+            data = pickle.load(f)
+    else:
+        data = {
+            'source_wallpaper': '', #the full path to the original, non edited wallpaper
+            'modified_wallpaper': '' # the new wallpaper with the quote
+        }
+    return data
 
-if os.path.isfile(PICKLE_FILE):
-    with open('data.pickle', 'rb') as f:
-        # The protocol version used is detected automatically, so we do not
-        # have to specify it.
-        data = pickle.load(f)
-else:
-    data = {
-        'source_wallpaper': '', #the full path to the original, non edited wallpaper
-        'modified_wallpaper': '' # the new wallpaper with the quote
-    }
+def save_data(data, file):
+    with open(file, 'wb') as f:
+        # Pickle the 'data' dictionary using the highest protocol available.
+        pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+
+def choose_quote(quotes):
+    return random.choice(quotes)
+
+def split_quote(quote):
+
+    if SOURCE_INDICATOR in quote:
+        quote, by = quote.split(SOURCE_INDICATOR)
+    else:
+        by = 'Anonymous'
+
+    by = SOURCE_INDICATOR+by
+
+    quote = quote.split()
+
+    words_per_line = 3 if len(quote) < 15 else 5
+
+    quote_parts = [' '.join(quote[i:i+words_per_line]) for i in range(0, len(quote), words_per_line)]
+    quote_parts.append(by)
+
+    return '\n'.join(quote_parts)
 
 
-
-
-
-
-#gsettings get org.gnome.sh.background picture-uri
-#gsettings get org.mate.background picture-filename
-
-desktop_session = get_desktop_environment()
-
-if 'mate' == desktop_session:
+def get_system_wallpaper():
     args = ["gsettings", "get", "org.mate.background", "picture-filename"]
-    system_wallpaper = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0][1:-2].strip().decode("utf-8")
-    wallpaper_path = '/'.join(system_wallpaper.split('/')[0:-1])
-    wallpaper_file = system_wallpaper.split('/')[-1]
-else:
-    print('Unsupported system.')
-    exit(1)
+    return subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0][1:-2].strip().decode("utf-8")
+
+def set_background_image(wallpaper):
+    args = ["gsettings", "set", "org.mate.background", "picture-filename", "'%s'" % wallpaper]
+    subprocess.Popen(args, stdout=subprocess.PIPE)
+
+def get_path(system_wallpaper):
+    return '/'.join(system_wallpaper.split('/')[0:-1])
+
+def get_file(system_wallpaper):
+    return system_wallpaper.split('/')[-1]
 
 
 
+def overlay_quote_on_image(quote, image_file, font):
+    #Read image
+    image = Image.open(image_file)
 
-if data['modified_wallpaper'] != system_wallpaper:
-    data['modified_wallpaper'] = os.path.join(wallpaper_path,str(random.random())[2:10] + wallpaper_file)
-    data['source_wallpaper'] = system_wallpaper
+    width, height = image.size
 
+    quote_lines = split_quote(quote)
 
+    draw = ImageDraw.Draw(image)
 
+    font = ImageFont.truetype(font,60)
 
+    draw.multiline_text((width/5, height/5), quote_lines, (255,255,255),font=font)
 
-#Read image
-image = Image.open(data['source_wallpaper']) #Image.open(os.path.join( IMAGE_PATH, IMAGE ))
-width, height = image.size
+    ImageDraw.Draw(image)
 
-
-quote = random.choice(quotes)
-
-if SOURCE_INDICATOR in quote:
-    quote, by = quote.split(SOURCE_INDICATOR)
-else:
-    by = 'Anonymous'
-
-by = SOURCE_INDICATOR+by
-
-quote = quote.split()
-
-words_per_line = 3 if len(quote) < 15 else 5
-
-quote_parts = [' '.join(quote[i:i+words_per_line]) for i in range(0, len(quote), words_per_line)]
-quote_parts.append(by)
-
-quote_lines = '\n'.join(quote_parts)
-
-draw = ImageDraw.Draw(image)
-
-draw.multiline_text((width/5, height/5), quote_lines, (255,255,255),font=font)
-
-draw = ImageDraw.Draw(image)
-
-image.show()
-
-image.save(data['modified_wallpaper'])
-
-args = ["gsettings", "set", "org.mate.background", "picture-filename", "'%s'" % data['modified_wallpaper']]
-subprocess.Popen(args, stdout=subprocess.PIPE)
-
-
-with open(PICKLE_FILE, 'wb') as f:
-    # Pickle the 'data' dictionary using the highest protocol available.
-    pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
-
-
+    return image
 
 
 if __name__ == '__main__':
-    pass
+    # gsettings get org.gnome.sh.background picture-uri
+    # gsettings get org.mate.background picture-filename
+
+    desktop_session = get_desktop_environment()
+
+    if (not supported_de(desktop_session)):
+        print('Unsupported system.')
+        exit(0)
+
+    if not os.path.isfile(QUOTES_FILE):
+        print('Quotes file missing')
+        exit(0)
+
+    quote = choose_quote(load_quotes_from_file(QUOTES_FILE))
+
+    system_wallpaper = get_system_wallpaper()
+
+    wallpaper_path = get_path(system_wallpaper)
+    wallpaper_file = get_file(system_wallpaper)
+
+    data = get_data(PICKLE_FILE)
+
+    if data['modified_wallpaper'] != system_wallpaper:
+        data['modified_wallpaper'] = os.path.join(wallpaper_path, str(random.random())[2:10] + wallpaper_file)
+        data['source_wallpaper'] = system_wallpaper
+
+
+    image = overlay_quote_on_image(quote, data['source_wallpaper'], FONT)
+
+    #image.show()
+
+    image.save(data['modified_wallpaper'])
+
+    set_background_image(data['modified_wallpaper'])
+
+    save_data(data, PICKLE_FILE)
+
+
+
